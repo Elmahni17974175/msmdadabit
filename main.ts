@@ -3,7 +3,7 @@
  * DaDa:bit + WonderCam (via dadabit)
  *
  * Version avec :
- * - Reglages (vitesses, servos, angles, seuils caméra)
+ * - Reglages (vitesses, servos, angles, seuils camera)
  * - Capteurs ligne
  * - Mouvements simples + demi-tour robuste (recalage ligne)
  * - Suivi de ligne (mode compétition)
@@ -174,7 +174,7 @@ namespace msmdadabit {
     }
 
     //% blockId=msm_set_cam_thresholds
-    //% block="regler seuils caméra Xmin %xmin Xmax %xmax Yproche %y validations %val"
+    //% block="regler seuils camera Xmin %xmin Xmax %xmax Yproche %y validations %val"
     //% xmin.defl=80 xmax.defl=240 y.defl=237 val.defl=8
     //% group="Reglages"
     export function setCameraThresholds(xmin: number = 80, xmax: number = 240, y: number = 237, val: number = 8): void {
@@ -438,11 +438,11 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // MACROS (sans caméra)
+    // MACROS (sans camera)
     // =========================================================
     //% blockId=msm_beep_validation
     //% block="bip validation"
-    //% group="Macros (sans caméra)"
+    //% group="Macros (sans camera)"
     export function beepValidation(): void {
         music.play(music.tonePlayable(262, music.beat(BeatFraction.Whole)), music.PlaybackMode.UntilDone)
     }
@@ -450,7 +450,7 @@ namespace msmdadabit {
     //% blockId=msm_manage_dest_no_cam
     //% block="si destination alors déposer puis demi-tour vitesse %v"
     //% v.defl=44
-    //% group="Macros (sans caméra)"
+    //% group="Macros (sans camera)"
     export function manageDestinationNoCamera(v: number = 44): void {
         updateLineSensors()
         if (atDestination()) {
@@ -460,8 +460,8 @@ namespace msmdadabit {
     }
 
     //% blockId=msm_cycle_no_cam
-    //% block="cycle suiveur de ligne sans caméra"
-    //% group="Macros (sans caméra)"
+    //% block="cycle suiveur de ligne sans camera"
+    //% group="Macros (sans camera)"
     export function cycleNoCamera(): void {
         updateLineSensors()
         lineFollowGeneral()
@@ -532,7 +532,7 @@ namespace msmdadabit {
 
     /**
      * Macro AI Handler - Reconnaissance :
-     * - update caméra + update ligne
+     * - update camera + update ligne
      * - suivre la ligne
      * - si ID stable -> approche + attrape (passe en phase 1)
      */
@@ -549,7 +549,7 @@ namespace msmdadabit {
 
     /**
      * Macro AI Handler - Livraison :
-     * - update caméra + update ligne
+     * - update camera + update ligne
      * - aller jusqu'à destination
      * - déposer + demi-tour (recalage ligne)
      */
