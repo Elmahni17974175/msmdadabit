@@ -1,5 +1,5 @@
 /**
- * msmdadabit - Extension MakeCode (micro:bit)
+ * msmdadabit - Extension MakeCode (micro:bit) 
  * DaDa:bit + WonderCam (via dadabit)
  *
  * Version pédagogique :
