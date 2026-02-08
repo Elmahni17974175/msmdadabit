@@ -2,19 +2,12 @@
  * msmdadabit - Extension MakeCode (micro:bit)
  * DaDa:bit + WonderCam (via dadabit)
  *
- * Version avec :
- * - Reglages (vitesses, servos, angles, seuils camera)
- * - Capteurs ligne
- * - Mouvements simples + demi-tour robuste (recalage ligne)
- * - Suivi de ligne (mode compétition)
- * - Vision WonderCam (couleur ID)
- * - Bras (attraper / déposer / home)
- * - Mission (approche & grab)
- * - + 2 macros AI Handler : Reconnaissance / Livraison (avec demi-tour)
+ * Version pédagogique :
+ * - Le bloc "approcher & attraper couleur ID" est une ACTION (pas une condition)
  */
 
 //% color=#00BCD4 icon="\uf085" block="msmdadabit"
-//% groups='["Init","Reglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Macros (sans camera)","Mission"]'
+//% groups='["Init","Réglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Macros (sans caméra)","Mission"]'
 namespace msmdadabit {
     // =========================================================
     // CAPTEURS LIGNE (internes)
@@ -30,6 +23,9 @@ namespace msmdadabit {
     // 0 = reconnaissance / 1 = livraison
     let phase = 0
     let nextCount = 0
+
+    // Pour debug/pédagogie : est-ce que la dernière tentative a attrapé ?
+    let lastGrab = false
 
     // =========================================================
     // PARAMETRES CAMERA (par défaut = seuils officiels)
@@ -57,7 +53,7 @@ namespace msmdadabit {
     let pinceOuverte = 15
     let pinceFermee = -25
 
-    // Etat manipulation (utile pour macros)
+    // Etat manipulation
     let porteObjet = false
 
     // =========================================================
@@ -84,7 +80,6 @@ namespace msmdadabit {
         dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, v)
     }
 
-    // Pivot sur place à droite
     function pivoterDroiteInterne(v: number): void {
         dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, v)
         dadabit.setLego360Servo(2, dadabit.Oriention.Counterclockwise, v)
@@ -92,7 +87,6 @@ namespace msmdadabit {
         dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, v)
     }
 
-    // Pivot sur place à gauche
     function pivoterGaucheInterne(v: number): void {
         dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v)
         dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, v)
@@ -100,7 +94,6 @@ namespace msmdadabit {
         dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, v)
     }
 
-    // Virage en arc (doux) : ralentir un côté
     function tournerGaucheArcInterne(v: number): void {
         const vLent = Math.max(0, v - 15)
         dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, vLent)
@@ -120,9 +113,6 @@ namespace msmdadabit {
     // =========================================================
     // INIT
     // =========================================================
-    /**
-     * Initialise DaDa:bit + WonderCam (détection couleur) + bras en position départ.
-     */
     //% blockId=msm_aihandler_init
     //% block="initialiser AI Handler (DaDa:bit + WonderCam)"
     //% group="Init"
@@ -134,6 +124,7 @@ namespace msmdadabit {
         phase = 0
         nextCount = 0
         porteObjet = false
+        lastGrab = false
 
         armHome()
         stopInterne()
@@ -144,9 +135,9 @@ namespace msmdadabit {
     // REGLAGES
     // =========================================================
     //% blockId=msm_set_speeds
-    //% block="regler vitesses suivi tout droit %vd correction %vc petit %vp"
+    //% block="régler vitesses suivi tout droit %vd correction %vc petit %vp"
     //% vd.defl=55 vc.defl=44 vp.defl=33
-    //% group="Reglages"
+    //% group="Réglages"
     export function setLineSpeeds(vd: number = 55, vc: number = 44, vp: number = 33): void {
         vToutDroit = vd
         vCorrection = vc
@@ -154,18 +145,18 @@ namespace msmdadabit {
     }
 
     //% blockId=msm_set_arm_ports
-    //% block="regler ports servos bras %bras pince %pince"
+    //% block="régler ports servos bras %bras pince %pince"
     //% bras.defl=5 pince.defl=6
-    //% group="Reglages"
+    //% group="Réglages"
     export function setArmPorts(bras: number = 5, pince: number = 6): void {
         SERVO_ARM = bras
         SERVO_GRIP = pince
     }
 
     //% blockId=msm_set_arm_angles
-    //% block="regler angles bras haut %bh bras bas %bb pince ouverte %po pince fermée %pf"
+    //% block="régler angles bras haut %bh bras bas %bb pince ouverte %po pince fermée %pf"
     //% bh.defl=-60 bb.defl=-5 po.defl=15 pf.defl=-25
-    //% group="Reglages"
+    //% group="Réglages"
     export function setArmAngles(bh: number = -60, bb: number = -5, po: number = 15, pf: number = -25): void {
         brasHaut = bh
         brasBas = bb
@@ -174,9 +165,9 @@ namespace msmdadabit {
     }
 
     //% blockId=msm_set_cam_thresholds
-    //% block="regler seuils camera Xmin %xmin Xmax %xmax Yproche %y validations %val"
+    //% block="régler seuils caméra Xmin %xmin Xmax %xmax Yproche %y validations %val"
     //% xmin.defl=80 xmax.defl=240 y.defl=237 val.defl=8
-    //% group="Reglages"
+    //% group="Réglages"
     export function setCameraThresholds(xmin: number = 80, xmax: number = 240, y: number = 237, val: number = 8): void {
         X_MIN = xmin
         X_MAX = xmax
@@ -195,17 +186,6 @@ namespace msmdadabit {
         S2 = dadabit.line_followers(dadabit.LineFollowerSensors.S2, dadabit.LineColor.Black)
         S3 = dadabit.line_followers(dadabit.LineFollowerSensors.S3, dadabit.LineColor.Black)
         S4 = dadabit.line_followers(dadabit.LineFollowerSensors.S4, dadabit.LineColor.Black)
-    }
-
-    //% blockId=msm_is_on_black
-    //% block="capteur %sensor sur noir ?"
-    //% sensor.defl=dadabit.LineFollowerSensors.S2
-    //% group="Capteurs"
-    export function isOnBlack(sensor: dadabit.LineFollowerSensors): boolean {
-        if (sensor == dadabit.LineFollowerSensors.S1) return S1
-        if (sensor == dadabit.LineFollowerSensors.S2) return S2
-        if (sensor == dadabit.LineFollowerSensors.S3) return S3
-        return S4
     }
 
     //% blockId=msm_at_destination
@@ -273,19 +253,14 @@ namespace msmdadabit {
         pivoterDroiteInterne(v)
     }
 
-    /**
-     * Demi-tour robuste avec recalage ligne (inspiré du code testé).
-     */
     //% blockId=msm_move_u_turn
     //% block="faire demi-tour (recalage ligne) vitesse %v"
     //% v.defl=44
     //% group="Mouvements"
     export function uTurn(v: number = 44): void {
-        // impulsion rotation
         pivoterDroiteInterne(v)
         basic.pause(500)
 
-        // recalage jusqu'à retrouver le pattern stable
         updateLineSensors()
         while (S1 || S2 || !(S3 && S4)) {
             dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v)
@@ -298,7 +273,7 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // SUIVI DE LIGNE (mode compétition)
+    // SUIVI DE LIGNE
     // =========================================================
     //% blockId=msm_line_follow_compet
     //% block="suivre la ligne (mode compétition)"
@@ -349,32 +324,13 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // VISION (WonderCam)
+    // VISION
     // =========================================================
     //% blockId=msm_update_cam
     //% block="mettre à jour WonderCam"
     //% group="Vision (WonderCam)"
     export function updateCamera(): void {
         wondercam.UpdateResult()
-    }
-
-    //% blockId=msm_color_centered
-    //% block="couleur ID %id détectée et centrée ?"
-    //% id.min=1 id.max=7 id.defl=1
-    //% group="Vision (WonderCam)"
-    export function isColorCentered(id: number): boolean {
-        if (!wondercam.isDetectedColorId(id)) return false
-        const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
-        return x >= X_MIN && x <= X_MAX
-    }
-
-    //% blockId=msm_color_y
-    //% block="Y de couleur ID %id"
-    //% id.min=1 id.max=7 id.defl=1
-    //% group="Vision (WonderCam)"
-    export function colorY(id: number): number {
-        if (!wondercam.isDetectedColorId(id)) return -1
-        return wondercam.XOfColorId(wondercam.Options.Pos_Y, id)
     }
 
     // =========================================================
@@ -438,41 +394,17 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // MACROS (sans camera)
+    // MACROS (sans caméra)
     // =========================================================
     //% blockId=msm_beep_validation
     //% block="bip validation"
-    //% group="Macros (sans camera)"
+    //% group="Macros (sans caméra)"
     export function beepValidation(): void {
         music.play(music.tonePlayable(262, music.beat(BeatFraction.Whole)), music.PlaybackMode.UntilDone)
     }
 
-    //% blockId=msm_manage_dest_no_cam
-    //% block="si destination alors déposer puis demi-tour vitesse %v"
-    //% v.defl=44
-    //% group="Macros (sans camera)"
-    export function manageDestinationNoCamera(v: number = 44): void {
-        updateLineSensors()
-        if (atDestination()) {
-            if (porteObjet) drop()
-            uTurn(v)
-        }
-    }
-
-    //% blockId=msm_cycle_no_cam
-    //% block="cycle suiveur de ligne sans camera"
-    //% group="Macros (sans camera)"
-    export function cycleNoCamera(): void {
-        updateLineSensors()
-        lineFollowGeneral()
-        if (porteObjet && atDestination()) {
-            drop()
-            uTurn(vCorrection)
-        }
-    }
-
     // =========================================================
-    // MISSION (get/set phase + approche/grab + 2 macros AI Handler)
+    // MISSION
     // =========================================================
     //% blockId=msm_get_phase
     //% block="phase mission (0=reconnaissance,1=livraison)"
@@ -490,52 +422,68 @@ namespace msmdadabit {
         nextCount = 0
     }
 
-    /**
-     * Approche l’objet couleur ID : stable VALIDATIONS fois + centrage X,
-     * puis avance jusqu’à Y_CLOSE, puis grab().
-     * Retourne true si attrapage effectué.
-     */
-    //% blockId=msm_approach_grab_color
-    //% block="si couleur ID %id détectée (stable) alors approcher & attraper"
-    //% id.min=1 id.max=7 id.defl=1
+    //% blockId=msm_last_grab
+    //% block="dernière tentative a attrapé ?"
     //% group="Mission"
-    export function approachAndGrabIfColor(id: number): boolean {
-        if (phase != 0) return false
-
-        if (wondercam.isDetectedColorId(id)) {
-            const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
-            if (x >= X_MIN && x <= X_MAX) {
-                nextCount += 1
-
-                if (nextCount > VALIDATIONS) {
-                    nextCount = 0
-                    beepValidation()
-
-                    while (wondercam.isDetectedColorId(id) &&
-                        wondercam.XOfColorId(wondercam.Options.Pos_Y, id) < Y_CLOSE) {
-                        updateCamera()
-                        updateLineSensors()
-                        lineFollowGeneral()
-                    }
-
-                    grab()
-                    return true
-                }
-            }
-        }
-        return false
+    export function lastAttemptGrabbed(): boolean {
+        return lastGrab
     }
 
-    // -------------------------
-    // NOUVEAUX MACROS AI HANDLER
-    // -------------------------
-
+    // ---------------------------------------------------------
+    // ✅ ACTION PEDAGOGIQUE (pas une condition)
+    // ---------------------------------------------------------
     /**
-     * Macro AI Handler - Reconnaissance :
-     * - update camera + update ligne
-     * - suivre la ligne
-     * - si ID stable -> approche + attrape (passe en phase 1)
+     * ACTION : chercher un cube de couleur ID, s'en approcher puis l'attraper.
+     * - Le robot ne fait rien si: pas détecté / pas stable / pas centré / déjà en livraison.
+     * - Quand il attrape: bip + bras + passe en phase 1.
      */
+    //% blockId=msm_approach_grab_color
+    //% block="approcher & attraper couleur ID %id"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Mission"
+    export function approachAndGrabIfColor(id: number): void {
+        lastGrab = false
+
+        // seulement en reconnaissance
+        if (phase != 0) return
+
+        // détectée ?
+        if (!wondercam.isDetectedColorId(id)) {
+            nextCount = 0
+            return
+        }
+
+        // centrée ?
+        const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
+        if (x < X_MIN || x > X_MAX) {
+            nextCount = 0
+            return
+        }
+
+        // stabilité
+        nextCount += 1
+        if (nextCount <= VALIDATIONS) return
+
+        // validé
+        nextCount = 0
+        beepValidation()
+
+        // approche : avancer jusqu'à proximité
+        while (wondercam.isDetectedColorId(id) &&
+            wondercam.XOfColorId(wondercam.Options.Pos_Y, id) < Y_CLOSE) {
+            updateCamera()
+            updateLineSensors()
+            lineFollowGeneral()
+        }
+
+        // attraper
+        grab()
+        lastGrab = true
+    }
+
+    // =========================================================
+    // MACROS AI HANDLER (utilisent le bloc ACTION)
+    // =========================================================
     //% blockId=msm_macro_reconnaissance
     //% block="macro AI Handler : reconnaissance (suivre ligne + attraper couleur ID %id)"
     //% id.min=1 id.max=7 id.defl=1
@@ -544,15 +492,9 @@ namespace msmdadabit {
         updateCamera()
         updateLineSensors()
         lineFollowGeneral()
-        approachAndGrabIfColor(id)
+        approachAndGrabIfColor(id) // ✅ action
     }
 
-    /**
-     * Macro AI Handler - Livraison :
-     * - update camera + update ligne
-     * - aller jusqu'à destination
-     * - déposer + demi-tour (recalage ligne)
-     */
     //% blockId=msm_macro_livraison
     //% block="macro AI Handler : livraison (aller destination + déposer + demi-tour) vitesse %v"
     //% v.defl=44
