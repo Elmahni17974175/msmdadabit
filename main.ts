@@ -431,8 +431,8 @@ namespace msmdadabit {
 
     /**
      * ACTION : chercher un cube de couleur ID, s'en approcher puis l'attraper.
-     * - Ne fait rien si : pas détecté / pas stable / pas centré / déjà en livraison.
-     * - Quand il attrape : bip + bras + passe en phase 1.
+     * - Le robot ne fait rien si: pas détecté / pas stable / pas centré / déjà en livraison.
+     * - Quand il attrape: bip + bras + passe en phase 1.
      */
     //% blockId=msm_approach_grab_color
     //% block="approcher & attraper couleur ID %id"
@@ -478,6 +478,9 @@ namespace msmdadabit {
         lastGrab = true
     }
 
+    // =========================================================
+    // MACROS AI HANDLER (utilisent le bloc ACTION)
+    // =========================================================
     //% blockId=msm_macro_reconnaissance
     //% block="macro AI Handler : reconnaissance (suivre ligne + attraper couleur ID %id)"
     //% id.min=1 id.max=7 id.defl=1
@@ -508,9 +511,12 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // BLOCS UTILS (AJOUTS) - SANS DOUBLONS
+    // BLOCS UTILS (AJOUTS - sans casser l'existant)
     // =========================================================
 
+    /**
+     * Lire un capteur individuel (valeur mémorisée après updateLineSensors()).
+     */
     //% blockId=msm_is_on_black
     //% block="capteur %sensor sur noir ?"
     //% sensor.defl=dadabit.LineFollowerSensors.S2
@@ -522,6 +528,9 @@ namespace msmdadabit {
         return S4
     }
 
+    /**
+     * Nombre de capteurs sur noir (0..4) (après updateLineSensors()).
+     */
     //% blockId=msm_black_count
     //% block="nombre de capteurs sur noir"
     //% group="Capteurs"
@@ -534,6 +543,9 @@ namespace msmdadabit {
         return c
     }
 
+    /**
+     * Vrai si au moins 3 capteurs sur noir (barre/checkpoint).
+     */
     //% blockId=msm_on_bar_3plus
     //% block="barre détectée ? (au moins 3 capteurs sur noir)"
     //% group="Capteurs"
@@ -541,6 +553,9 @@ namespace msmdadabit {
         return blackCount() >= 3
     }
 
+    /**
+     * Vrai si tous les capteurs sont sur blanc (ligne perdue).
+     */
     //% blockId=msm_all_white
     //% block="ligne perdue ? (tous blancs)"
     //% group="Capteurs"
@@ -548,6 +563,9 @@ namespace msmdadabit {
         return !S1 && !S2 && !S3 && !S4
     }
 
+    // =========================================================
+    // WONDERCAM - MODES UTILS
+    // =========================================================
     //% blockId=msm_cam_mode_apriltag
     //% block="caméra mode AprilTag"
     //% group="Vision (WonderCam)"
@@ -572,13 +590,17 @@ namespace msmdadabit {
         basic.pause(120)
     }
 
+    /**
+     * Lire AprilTag A/B avec délai max (ms).
+     * Retourne : tagA, tagB, ou -1.
+     */
     //% blockId=msm_read_tag_ab
     //% block="lire AprilTag A %tagA ou B %tagB (timeout %timeoutMs ms)"
     //% tagA.defl=1 tagB.defl=2 timeoutMs.defl=6000
     //% group="Vision (WonderCam)"
     export function readAprilTagAB(tagA: number = 1, tagB: number = 2, timeoutMs: number = 6000): number {
-        camModeAprilTag()
         let t = 0
+        camModeAprilTag()
         while (t < timeoutMs) {
             updateCamera()
             if (wondercam.isDetecteAprilTagId(tagA)) return tagA
@@ -589,6 +611,10 @@ namespace msmdadabit {
         return -1
     }
 
+    /**
+     * Lire un nombre 1/2 de manière stable (6 fois) avec délai max (ms).
+     * Retourne 1 ou 2 (par défaut 1).
+     */
     //% blockId=msm_read_number_stable
     //% block="lire nombre 1/2 stable (timeout %timeoutMs ms)"
     //% timeoutMs.defl=2500
@@ -615,6 +641,13 @@ namespace msmdadabit {
         return 1
     }
 
+    // =========================================================
+    // SERVO DÉPÔT (SMART TRANSPORT)
+    // =========================================================
+    /**
+     * Déposer un cube avec un servo 270° (ex: port 6).
+     * - Va à l'angle "dépôt", attend, puis revient à "repos".
+     */
     //% blockId=msm_drop_servo270
     //% block="déposer cube servo270 port %port angle dépôt %dropAng angle repos %restAng temps dépôt %dropMs temps repos %restMs pause %holdMs"
     //% port.defl=6 dropAng.defl=-100 restAng.defl=-20 dropMs.defl=200 restMs.defl=500 holdMs.defl=2000
