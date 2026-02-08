@@ -1,17 +1,16 @@
 {
-  "name": "MSMdadabit",
-  "version": "0.1.0",
-  "description": "MSMdadabit (DaDa:bit + WonderCam via dadabit) : suivi de ligne fiable + détection couleur ID + approche + attraper/deposer + cycle pro.",
+  "name": "msm-ai-handler",
+  "version": "0.0.1",
+  "description": "MSM AI Handler (DaDa:bit + WonderCam) - blocs utilitaires pour suivi de ligne + saisie + depot",
   "license": "MIT",
   "dependencies": {
     "core": "*",
-    "radio": "*",
-    "music": "*",
-    "dadabit": "github:Hiwonder/dadabit"
+    "microbit": "*",
+    "dadabit": "github:hiwonder/DaDabit",
+    "wondercam": "github:Hiwonder/WonderCam"
   },
   "files": [
     "main.ts"
   ],
-  "testFiles": [],
   "public": true
 }
