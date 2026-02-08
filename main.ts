@@ -3,7 +3,7 @@
  * DaDa:bit + WonderCam (via dadabit)
  *
  * Version avec :
- * - Réglages (vitesses, servos, angles, seuils caméra)
+ * - Reglages (vitesses, servos, angles, seuils caméra)
  * - Capteurs ligne
  * - Mouvements simples + demi-tour robuste (recalage ligne)
  * - Suivi de ligne (mode compétition)
@@ -14,7 +14,7 @@
  */
 
 //% color=#00BCD4 icon="\uf085" block="msmdadabit"
-//% groups='["Init","Réglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Macros (sans caméra)","Mission"]'
+//% groups='["Init","Reglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Macros (sans camera)","Mission"]'
 namespace msmdadabit {
     // =========================================================
     // CAPTEURS LIGNE (internes)
@@ -144,9 +144,9 @@ namespace msmdadabit {
     // REGLAGES
     // =========================================================
     //% blockId=msm_set_speeds
-    //% block="régler vitesses suivi tout droit %vd correction %vc petit %vp"
+    //% block="regler vitesses suivi tout droit %vd correction %vc petit %vp"
     //% vd.defl=55 vc.defl=44 vp.defl=33
-    //% group="Réglages"
+    //% group="Reglages"
     export function setLineSpeeds(vd: number = 55, vc: number = 44, vp: number = 33): void {
         vToutDroit = vd
         vCorrection = vc
@@ -154,18 +154,18 @@ namespace msmdadabit {
     }
 
     //% blockId=msm_set_arm_ports
-    //% block="régler ports servos bras %bras pince %pince"
+    //% block="regler ports servos bras %bras pince %pince"
     //% bras.defl=5 pince.defl=6
-    //% group="Réglages"
+    //% group="Reglages"
     export function setArmPorts(bras: number = 5, pince: number = 6): void {
         SERVO_ARM = bras
         SERVO_GRIP = pince
     }
 
     //% blockId=msm_set_arm_angles
-    //% block="régler angles bras haut %bh bras bas %bb pince ouverte %po pince fermée %pf"
+    //% block="regler angles bras haut %bh bras bas %bb pince ouverte %po pince fermée %pf"
     //% bh.defl=-60 bb.defl=-5 po.defl=15 pf.defl=-25
-    //% group="Réglages"
+    //% group="Reglages"
     export function setArmAngles(bh: number = -60, bb: number = -5, po: number = 15, pf: number = -25): void {
         brasHaut = bh
         brasBas = bb
@@ -174,9 +174,9 @@ namespace msmdadabit {
     }
 
     //% blockId=msm_set_cam_thresholds
-    //% block="régler seuils caméra Xmin %xmin Xmax %xmax Yproche %y validations %val"
+    //% block="regler seuils caméra Xmin %xmin Xmax %xmax Yproche %y validations %val"
     //% xmin.defl=80 xmax.defl=240 y.defl=237 val.defl=8
-    //% group="Réglages"
+    //% group="Reglages"
     export function setCameraThresholds(xmin: number = 80, xmax: number = 240, y: number = 237, val: number = 8): void {
         X_MIN = xmin
         X_MAX = xmax
