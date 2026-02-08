@@ -3,11 +3,13 @@
  * DaDa:bit + WonderCam (via dadabit)
  *
  * Version pédagogique :
- * - Le bloc "approcher & attraper couleur ID" est une ACTION (pas une condition)
+ * - "approcher & attraper couleur ID" est une ACTION (pas une condition)
+ * - Blocs génériques : AprilTag + Chiffres (pas limités à 1/2)
+ * - Smart Transport : config / reset / step / done (encore plus blocs)
  */
 
 //% color=#00BCD4 icon="\uf085" block="msmdadabit"
-//% groups='["Init","Réglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Macros (sans caméra)","Mission"]'
+//% groups='["Init","Réglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Mission","Smart Transport"]'
 namespace msmdadabit {
     // =========================================================
     // CAPTEURS LIGNE (internes)
@@ -18,17 +20,15 @@ namespace msmdadabit {
     let S4 = false
 
     // =========================================================
-    // ETAT MISSION
+    // ETAT MISSION (AI Handler)
     // =========================================================
     // 0 = reconnaissance / 1 = livraison
     let phase = 0
     let nextCount = 0
-
-    // Pour debug/pédagogie : est-ce que la dernière tentative a attrapé ?
     let lastGrab = false
 
     // =========================================================
-    // PARAMETRES CAMERA (par défaut = seuils officiels)
+    // PARAMETRES CAMERA (par défaut = seuils officiels AI Handler)
     // =========================================================
     let X_MIN = 80
     let X_MAX = 240
@@ -36,7 +36,7 @@ namespace msmdadabit {
     let VALIDATIONS = 8
 
     // =========================================================
-    // VITESSES (réglables)
+    // VITESSES (réglables - suiveur de ligne)
     // =========================================================
     let vToutDroit = 55
     let vCorrection = 44
@@ -113,6 +113,9 @@ namespace msmdadabit {
     // =========================================================
     // INIT
     // =========================================================
+    /**
+     * Initialise DaDa:bit + WonderCam (par défaut en détection couleur).
+     */
     //% blockId=msm_aihandler_init
     //% block="initialiser AI Handler (DaDa:bit + WonderCam)"
     //% group="Init"
@@ -188,6 +191,43 @@ namespace msmdadabit {
         S4 = dadabit.line_followers(dadabit.LineFollowerSensors.S4, dadabit.LineColor.Black)
     }
 
+    //% blockId=msm_is_on_black
+    //% block="capteur %sensor sur noir ?"
+    //% sensor.defl=dadabit.LineFollowerSensors.S2
+    //% group="Capteurs"
+    export function isOnBlack(sensor: dadabit.LineFollowerSensors): boolean {
+        if (sensor == dadabit.LineFollowerSensors.S1) return S1
+        if (sensor == dadabit.LineFollowerSensors.S2) return S2
+        if (sensor == dadabit.LineFollowerSensors.S3) return S3
+        return S4
+    }
+
+    //% blockId=msm_black_count
+    //% block="nombre de capteurs sur noir"
+    //% group="Capteurs"
+    export function blackCount(): number {
+        let c = 0
+        if (S1) c++
+        if (S2) c++
+        if (S3) c++
+        if (S4) c++
+        return c
+    }
+
+    //% blockId=msm_on_bar_3plus
+    //% block="barre détectée ? (au moins 3 capteurs sur noir)"
+    //% group="Capteurs"
+    export function onBar3Plus(): boolean {
+        return blackCount() >= 3
+    }
+
+    //% blockId=msm_all_white
+    //% block="ligne perdue ? (tous blancs)"
+    //% group="Capteurs"
+    export function allWhite(): boolean {
+        return !S1 && !S2 && !S3 && !S4
+    }
+
     //% blockId=msm_at_destination
     //% block="destination atteinte ? (S1,S2,S3,S4 sur noir)"
     //% group="Capteurs"
@@ -253,6 +293,9 @@ namespace msmdadabit {
         pivoterDroiteInterne(v)
     }
 
+    /**
+     * Demi-tour robuste avec recalage ligne (inspiré du code testé).
+     */
     //% blockId=msm_move_u_turn
     //% block="faire demi-tour (recalage ligne) vitesse %v"
     //% v.defl=44
@@ -272,8 +315,24 @@ namespace msmdadabit {
         stopInterne()
     }
 
+    /**
+     * Déposer un cube avec un servo 270° (Smart Transport).
+     */
+    //% blockId=msm_drop_servo270
+    //% block="déposer cube servo270 port %port angle dépôt %dropAng angle repos %restAng temps dépôt %dropMs temps repos %restMs pause %holdMs"
+    //% port.defl=6 dropAng.defl=-100 restAng.defl=-20 dropMs.defl=200 restMs.defl=500 holdMs.defl=2000
+    //% group="Mouvements"
+    export function dropByServo270(port: number = 6, dropAng: number = -100, restAng: number = -20, dropMs: number = 200, restMs: number = 500, holdMs: number = 2000): void {
+        music.playTone(523, music.beat(BeatFraction.Quarter))
+        basic.pause(150)
+        dadabit.setLego270Servo(port, dropAng, dropMs)
+        basic.pause(holdMs)
+        dadabit.setLego270Servo(port, restAng, restMs)
+        basic.pause(300)
+    }
+
     // =========================================================
-    // SUIVI DE LIGNE
+    // SUIVI DE LIGNE (mode compétition)
     // =========================================================
     //% blockId=msm_line_follow_compet
     //% block="suivre la ligne (mode compétition)"
@@ -324,13 +383,107 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // VISION
+    // VISION (WonderCam)
     // =========================================================
     //% blockId=msm_update_cam
     //% block="mettre à jour WonderCam"
     //% group="Vision (WonderCam)"
     export function updateCamera(): void {
         wondercam.UpdateResult()
+    }
+
+    //% blockId=msm_cam_mode_apriltag
+    //% block="caméra mode AprilTag"
+    //% group="Vision (WonderCam)"
+    export function camModeAprilTag(): void {
+        wondercam.ChangeFunc(wondercam.Functions.AprilTag)
+        basic.pause(120)
+    }
+
+    //% blockId=msm_cam_mode_number
+    //% block="caméra mode Reconnaissance chiffres"
+    //% group="Vision (WonderCam)"
+    export function camModeNumber(): void {
+        wondercam.ChangeFunc(wondercam.Functions.NumberRecognition)
+        basic.pause(120)
+    }
+
+    //% blockId=msm_cam_mode_color
+    //% block="caméra mode Détection couleur"
+    //% group="Vision (WonderCam)"
+    export function camModeColor(): void {
+        wondercam.ChangeFunc(wondercam.Functions.ColorDetect)
+        basic.pause(120)
+    }
+
+    /**
+     * ✅ Nouveau nom générique AprilTag
+     * Retour : tagA, tagB, ou -1.
+     */
+    //% blockId=msm_detect_apriltag_ab
+    //% block="détecter AprilTag A %tagA ou B %tagB (timeout %timeoutMs ms)"
+    //% tagA.defl=1 tagB.defl=2 timeoutMs.defl=6000
+    //% group="Vision (WonderCam)"
+    export function detectAprilTagAB(tagA: number = 1, tagB: number = 2, timeoutMs: number = 6000): number {
+        camModeAprilTag()
+        let t = 0
+        while (t < timeoutMs) {
+            updateCamera()
+            if (wondercam.isDetecteAprilTagId(tagA)) return tagA
+            if (wondercam.isDetecteAprilTagId(tagB)) return tagB
+            basic.pause(120)
+            t += 120
+        }
+        return -1
+    }
+
+    /**
+     * ✅ Nouveau nom générique Chiffres (1..9 typiquement)
+     * Retour : chiffre détecté, sinon 1 par défaut.
+     */
+    //% blockId=msm_detect_number_stable
+    //% block="détecter chiffre stable (timeout %timeoutMs ms)"
+    //% timeoutMs.defl=2500
+    //% group="Vision (WonderCam)"
+    export function detectNumberStable(timeoutMs: number = 2500): number {
+        camModeNumber()
+        let t = 0
+        let last = 0
+        let hits = 0
+
+        while (t < timeoutMs) {
+            updateCamera()
+
+            if (wondercam.MaxConfidenceOfNumber() >= 0.4) {
+                const n = wondercam.NumberWithMaxConfidence()
+
+                // général : accepte 1..9 (tu peux limiter à 1..5 si tu veux)
+                if (n >= 1 && n <= 9) {
+                    if (n == last) hits++
+                    else { last = n; hits = 1 }
+                    if (hits >= 6) return n
+                }
+            }
+
+            basic.pause(100)
+            t += 100
+        }
+        return 1
+    }
+
+    // -------------------------
+    // ALIAS CACHÉS (compat)
+    // -------------------------
+    //% blockHidden=1
+    //% deprecated=1
+    export function readAprilTagAB(tagA: number = 1, tagB: number = 2, timeoutMs: number = 6000): number {
+        return detectAprilTagAB(tagA, tagB, timeoutMs)
+    }
+
+    //% blockHidden=1
+    //% deprecated=1
+    export function readNumberStable(timeoutMs: number = 2500): number {
+        return detectNumberStable(timeoutMs)
     }
 
     // =========================================================
@@ -394,17 +547,7 @@ namespace msmdadabit {
     }
 
     // =========================================================
-    // MACROS (sans caméra)
-    // =========================================================
-    //% blockId=msm_beep_validation
-    //% block="bip validation"
-    //% group="Macros (sans caméra)"
-    export function beepValidation(): void {
-        music.play(music.tonePlayable(262, music.beat(BeatFraction.Whole)), music.PlaybackMode.UntilDone)
-    }
-
-    // =========================================================
-    // MISSION
+    // MISSION (AI Handler)
     // =========================================================
     //% blockId=msm_get_phase
     //% block="phase mission (0=reconnaissance,1=livraison)"
@@ -429,10 +572,15 @@ namespace msmdadabit {
         return lastGrab
     }
 
+    //% blockId=msm_beep_validation
+    //% block="bip validation"
+    //% group="Mission"
+    export function beepValidation(): void {
+        music.play(music.tonePlayable(262, music.beat(BeatFraction.Whole)), music.PlaybackMode.UntilDone)
+    }
+
     /**
-     * ACTION : chercher un cube de couleur ID, s'en approcher puis l'attraper.
-     * - Le robot ne fait rien si: pas détecté / pas stable / pas centré / déjà en livraison.
-     * - Quand il attrape: bip + bras + passe en phase 1.
+     * ✅ ACTION : approcher & attraper une couleur ID (AI Handler)
      */
     //% blockId=msm_approach_grab_color
     //% block="approcher & attraper couleur ID %id"
@@ -441,31 +589,25 @@ namespace msmdadabit {
     export function approachAndGrabIfColor(id: number): void {
         lastGrab = false
 
-        // seulement en reconnaissance
         if (phase != 0) return
 
-        // détectée ?
         if (!wondercam.isDetectedColorId(id)) {
             nextCount = 0
             return
         }
 
-        // centrée ?
         const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
         if (x < X_MIN || x > X_MAX) {
             nextCount = 0
             return
         }
 
-        // stabilité
         nextCount += 1
         if (nextCount <= VALIDATIONS) return
 
-        // validé
         nextCount = 0
         beepValidation()
 
-        // approche : avancer jusqu'à proximité
         while (wondercam.isDetectedColorId(id) &&
             wondercam.XOfColorId(wondercam.Options.Pos_Y, id) < Y_CLOSE) {
             updateCamera()
@@ -473,198 +615,295 @@ namespace msmdadabit {
             lineFollowGeneral()
         }
 
-        // attraper
         grab()
         lastGrab = true
     }
 
     // =========================================================
-    // MACROS AI HANDLER (utilisent le bloc ACTION)
+    // SMART TRANSPORT (encore plus blocs)
     // =========================================================
-    //% blockId=msm_macro_reconnaissance
-    //% block="macro AI Handler : reconnaissance (suivre ligne + attraper couleur ID %id)"
-    //% id.min=1 id.max=7 id.defl=1
-    //% group="Mission"
-    export function macroReconnaissance(id: number = 1): void {
-        updateCamera()
-        updateLineSensors()
-        lineFollowGeneral()
-        approachAndGrabIfColor(id)
+    // 0=T1, 1=BP0, 2=T2, 3=BP1, 4=BP2, 99=FIN
+    let st_barIndex = 0
+    let st_pathAB = -1
+    let st_target = 0
+
+    let st_barHighMs = 0
+    let st_cooldownUntil = 0
+    let st_barLatched = false
+    let st_barArmed = true
+
+    let st_lastDisp = ""
+
+    // params Smart Transport
+    let ST_TAG_A = 1
+    let ST_TAG_B = 2
+    let ST_TURN_LEFT_90_MS = 1200
+    let ST_BACK_MS = 1000
+    let ST_BP0_TURN_MS = 240
+    let ST_LOOP_MS = 20
+    let ST_BAR_HOLD_MS = 30
+    let ST_BAR_COOLDOWN_MS = 220
+
+    let ST_SERVO_PORT = 6
+    let ST_DROP_ANG = -100
+    let ST_REST_ANG = -20
+    let ST_DROP_MS = 200
+    let ST_REST_MS = 500
+    let ST_HOLD_MS = 2000
+
+    let ST_V_TURN = 100
+    let ST_V_SLOW = 32
+    let ST_V_MED = 42
+
+    function stDisp(ch: string) {
+        if (ch == st_lastDisp) return
+        st_lastDisp = ch
+        basic.clearScreen()
+        basic.showString(ch)
     }
 
-    //% blockId=msm_macro_livraison
-    //% block="macro AI Handler : livraison (aller destination + déposer + demi-tour) vitesse %v"
-    //% v.defl=44
-    //% group="Mission"
-    export function macroLivraison(v: number = 44): void {
-        updateCamera()
-        updateLineSensors()
+    function stResetCooldown(ms: number) {
+        st_barHighMs = 0
+        st_barLatched = false
+        st_cooldownUntil = control.millis() + ms
+    }
 
-        if (atDestination()) {
-            drop()
-            basic.pause(200)
-            uTurn(v)
-            basic.pause(200)
+    function stRearmIfLeftBar() {
+        if (blackCount() <= 2) st_barArmed = true
+    }
+
+    function stBarHit(): boolean {
+        const now = control.millis()
+        if (now < st_cooldownUntil) return false
+        if (!st_barArmed) return false
+
+        const high = blackCount() >= 3
+        if (high) st_barHighMs += ST_LOOP_MS
+        else st_barHighMs = 0
+
+        if ((onBar3Plus() || st_barHighMs >= ST_BAR_HOLD_MS) && !st_barLatched) {
+            st_barLatched = true
+            st_cooldownUntil = now + ST_BAR_COOLDOWN_MS
+            st_barArmed = false
+            return true
+        }
+
+        if (!high) st_barLatched = false
+        return false
+    }
+
+    function stLeaveBarShort() {
+        let t = 0
+        while (t < 320) {
+            updateLineSensors()
+            if (blackCount() <= 2) break
+            forward(ST_V_SLOW)
+            basic.pause(15)
+            t += 15
+        }
+        stop()
+    }
+
+    function stLeaveT2Clear() {
+        forward(ST_V_SLOW)
+        basic.pause(350)
+        stop()
+        stResetCooldown(700)
+        st_barArmed = false
+    }
+
+    function stBack1s() {
+        backward(ST_V_SLOW)
+        basic.pause(ST_BACK_MS)
+        stop()
+    }
+
+    function stTurnLeft90() {
+        forward(ST_V_SLOW)
+        basic.pause(140)
+        stop()
+        basic.pause(50)
+
+        pivotLeft(ST_V_TURN)
+        basic.pause(ST_TURN_LEFT_90_MS)
+        stop()
+    }
+
+    function stTurnAtBP0() {
+        if (st_pathAB == ST_TAG_A) {
+            pivotLeft(ST_V_MED)
+            basic.pause(ST_BP0_TURN_MS)
         } else {
-            lineFollowGeneral()
+            pivotRight(ST_V_MED)
+            basic.pause(ST_BP0_TURN_MS)
         }
-    }
-
-    // =========================================================
-    // BLOCS UTILS (AJOUTS - sans casser l'existant)
-    // =========================================================
-
-    /**
-     * Lire un capteur individuel (valeur mémorisée après updateLineSensors()).
-     */
-    //% blockId=msm_is_on_black
-    //% block="capteur %sensor sur noir ?"
-    //% sensor.defl=dadabit.LineFollowerSensors.S2
-    //% group="Capteurs"
-    export function isOnBlack(sensor: dadabit.LineFollowerSensors): boolean {
-        if (sensor == dadabit.LineFollowerSensors.S1) return S1
-        if (sensor == dadabit.LineFollowerSensors.S2) return S2
-        if (sensor == dadabit.LineFollowerSensors.S3) return S3
-        return S4
+        stop()
     }
 
     /**
-     * Nombre de capteurs sur noir (0..4) (après updateLineSensors()).
+     * Configure Smart Transport (tous paramètres importants)
      */
-    //% blockId=msm_black_count
-    //% block="nombre de capteurs sur noir"
-    //% group="Capteurs"
-    export function blackCount(): number {
-        let c = 0
-        if (S1) c++
-        if (S2) c++
-        if (S3) c++
-        if (S4) c++
-        return c
+    //% blockId=msm_st_config
+    //% block="configurer Smart Transport tagA %tagA tagB %tagB virage90 %turn90ms ms recul %backMs ms BP0 %bp0ms ms loop %loopMs ms hold %holdMs ms cooldown %cooldownMs ms servo %servoPort drop %dropAng rest %restAng dropMs %dropMs restMs %restMs holdOpen %holdOpenMs"
+    //% tagA.defl=1 tagB.defl=2
+    //% turn90ms.defl=1200 backMs.defl=1000 bp0ms.defl=240
+    //% loopMs.defl=20 holdMs.defl=30 cooldownMs.defl=220
+    //% servoPort.defl=6 dropAng.defl=-100 restAng.defl=-20 dropMs.defl=200 restMs.defl=500 holdOpenMs.defl=2000
+    //% group="Smart Transport"
+    export function smartTransportConfig(
+        tagA: number,
+        tagB: number,
+        turn90ms: number,
+        backMs: number,
+        bp0ms: number,
+        loopMs: number,
+        holdMs: number,
+        cooldownMs: number,
+        servoPort: number,
+        dropAng: number,
+        restAng: number,
+        dropMs: number,
+        restMs: number,
+        holdOpenMs: number
+    ): void {
+        ST_TAG_A = tagA
+        ST_TAG_B = tagB
+        ST_TURN_LEFT_90_MS = turn90ms
+        ST_BACK_MS = backMs
+        ST_BP0_TURN_MS = bp0ms
+        ST_LOOP_MS = loopMs
+        ST_BAR_HOLD_MS = holdMs
+        ST_BAR_COOLDOWN_MS = cooldownMs
+
+        ST_SERVO_PORT = servoPort
+        ST_DROP_ANG = dropAng
+        ST_REST_ANG = restAng
+        ST_DROP_MS = dropMs
+        ST_REST_MS = restMs
+        ST_HOLD_MS = holdOpenMs
     }
 
     /**
-     * Vrai si au moins 3 capteurs sur noir (barre/checkpoint).
+     * Réinitialiser Smart Transport
      */
-    //% blockId=msm_on_bar_3plus
-    //% block="barre détectée ? (au moins 3 capteurs sur noir)"
-    //% group="Capteurs"
-    export function onBar3Plus(): boolean {
-        return blackCount() >= 3
+    //% blockId=msm_st_reset
+    //% block="réinitialiser Smart Transport"
+    //% group="Smart Transport"
+    export function smartTransportReset(): void {
+        st_barIndex = 0
+        st_pathAB = -1
+        st_target = 0
+
+        st_barHighMs = 0
+        st_cooldownUntil = 0
+        st_barLatched = false
+        st_barArmed = true
+
+        st_lastDisp = ""
+        basic.clearScreen()
     }
 
     /**
-     * Vrai si tous les capteurs sont sur blanc (ligne perdue).
+     * Étape Smart Transport (à appeler dans forever)
+     * T1 -> BP0 -> T2 -> BP1/BP2 -> Dépôt -> FIN
      */
-    //% blockId=msm_all_white
-    //% block="ligne perdue ? (tous blancs)"
-    //% group="Capteurs"
-    export function allWhite(): boolean {
-        return !S1 && !S2 && !S3 && !S4
-    }
+    //% blockId=msm_st_step
+    //% block="étape Smart Transport"
+    //% group="Smart Transport"
+    export function smartTransportStep(): void {
+        updateLineSensors()
+        stRearmIfLeftBar()
 
-    // =========================================================
-    // WONDERCAM - MODES UTILS
-    // =========================================================
-    //% blockId=msm_cam_mode_apriltag
-    //% block="caméra mode AprilTag"
-    //% group="Vision (WonderCam)"
-    export function camModeAprilTag(): void {
-        wondercam.ChangeFunc(wondercam.Functions.AprilTag)
-        basic.pause(120)
-    }
-
-    //% blockId=msm_cam_mode_number
-    //% block="caméra mode Nombre"
-    //% group="Vision (WonderCam)"
-    export function camModeNumber(): void {
-        wondercam.ChangeFunc(wondercam.Functions.NumberRecognition)
-        basic.pause(120)
-    }
-
-    //% blockId=msm_cam_mode_color
-    //% block="caméra mode Couleur"
-    //% group="Vision (WonderCam)"
-    export function camModeColor(): void {
-        wondercam.ChangeFunc(wondercam.Functions.ColorDetect)
-        basic.pause(120)
-    }
-
-    /**
-     * Lire AprilTag A/B avec délai max (ms).
-     * Retourne : tagA, tagB, ou -1.
-     */
-    //% blockId=msm_read_tag_ab
-    //% block="lire AprilTag A %tagA ou B %tagB (timeout %timeoutMs ms)"
-    //% tagA.defl=1 tagB.defl=2 timeoutMs.defl=6000
-    //% group="Vision (WonderCam)"
-    export function readAprilTagAB(tagA: number = 1, tagB: number = 2, timeoutMs: number = 6000): number {
-        let t = 0
-        camModeAprilTag()
-        while (t < timeoutMs) {
-            updateCamera()
-            if (wondercam.isDetecteAprilTagId(tagA)) return tagA
-            if (wondercam.isDetecteAprilTagId(tagB)) return tagB
-            basic.pause(120)
-            t += 120
-        }
-        return -1
-    }
-
-    /**
-     * Lire un nombre 1/2 de manière stable (6 fois) avec délai max (ms).
-     * Retourne 1 ou 2 (par défaut 1).
-     */
-    //% blockId=msm_read_number_stable
-    //% block="lire nombre 1/2 stable (timeout %timeoutMs ms)"
-    //% timeoutMs.defl=2500
-    //% group="Vision (WonderCam)"
-    export function readNumberStable(timeoutMs: number = 2500): number {
-        camModeNumber()
-        let t = 0
-        let last = 0
-        let hits = 0
-
-        while (t < timeoutMs) {
-            updateCamera()
-            if (wondercam.MaxConfidenceOfNumber() >= 0.4) {
-                const n = wondercam.NumberWithMaxConfidence()
-                if (n == 1 || n == 2) {
-                    if (n == last) hits++
-                    else { last = n; hits = 1 }
-                    if (hits >= 6) return n
+        // T1 : lire tag A/B sur barre
+        if (st_barIndex == 0 && st_pathAB == -1) {
+            stop()
+            if (onBar3Plus()) {
+                const id = detectAprilTagAB(ST_TAG_A, ST_TAG_B, 6000)
+                if (id == ST_TAG_A || id == ST_TAG_B) {
+                    st_pathAB = id
+                    stDisp(id == ST_TAG_A ? "A" : "B")
+                    basic.pause(200)
+                    stLeaveBarShort()
+                    stResetCooldown(240)
+                    st_barIndex = 1
                 }
             }
-            basic.pause(100)
-            t += 100
+            basic.pause(ST_LOOP_MS)
+            return
         }
-        return 1
+
+        // fin
+        if (st_barIndex == 99) {
+            stop()
+            basic.pause(ST_LOOP_MS)
+            return
+        }
+
+        // suivi ligne
+        lineFollowGeneral()
+
+        // barre suivante
+        if (!stBarHit()) {
+            basic.pause(ST_LOOP_MS)
+            return
+        }
+
+        stop()
+        basic.pause(220)
+
+        // BP0
+        if (st_barIndex == 1) {
+            stTurnAtBP0()
+            stLeaveBarShort()
+            stResetCooldown(240)
+            st_barIndex = 2
+            return
+        }
+
+        // T2 : lire chiffre (stable)
+        if (st_barIndex == 2) {
+            st_target = detectNumberStable(2500)
+            stDisp(st_target + "")
+            basic.pause(200)
+            stLeaveT2Clear()
+            st_barIndex = 3
+            return
+        }
+
+        // BP1
+        if (st_barIndex == 3) {
+            if (st_target == 1) {
+                stTurnLeft90()
+                stBack1s()
+                dropByServo270(ST_SERVO_PORT, ST_DROP_ANG, ST_REST_ANG, ST_DROP_MS, ST_REST_MS, ST_HOLD_MS)
+                st_barIndex = 99
+            } else {
+                stLeaveBarShort()
+                stResetCooldown(260)
+                st_barIndex = 4
+            }
+            return
+        }
+
+        // BP2
+        if (st_barIndex == 4) {
+            if (st_target == 2) {
+                stTurnLeft90()
+                stBack1s()
+                dropByServo270(ST_SERVO_PORT, ST_DROP_ANG, ST_REST_ANG, ST_DROP_MS, ST_REST_MS, ST_HOLD_MS)
+            }
+            st_barIndex = 99
+            return
+        }
     }
 
-    // =========================================================
-    // SERVO DÉPÔT (SMART TRANSPORT)
-    // =========================================================
     /**
-     * Déposer un cube avec un servo 270° (ex: port 6).
-     * - Va à l'angle "dépôt", attend, puis revient à "repos".
+     * Smart Transport terminé ?
      */
-    //% blockId=msm_drop_servo270
-    //% block="déposer cube servo270 port %port angle dépôt %dropAng angle repos %restAng temps dépôt %dropMs temps repos %restMs pause %holdMs"
-    //% port.defl=6 dropAng.defl=-100 restAng.defl=-20 dropMs.defl=200 restMs.defl=500 holdMs.defl=2000
-    //% group="Mouvements"
-    export function dropByServo270(
-        port: number = 6,
-        dropAng: number = -100,
-        restAng: number = -20,
-        dropMs: number = 200,
-        restMs: number = 500,
-        holdMs: number = 2000
-    ): void {
-        music.playTone(523, music.beat(BeatFraction.Quarter))
-        basic.pause(150)
-        dadabit.setLego270Servo(port, dropAng, dropMs)
-        basic.pause(holdMs)
-        dadabit.setLego270Servo(port, restAng, restMs)
-        basic.pause(300)
+    //% blockId=msm_st_done
+    //% block="Smart Transport terminé ?"
+    //% group="Smart Transport"
+    export function smartTransportDone(): boolean {
+        return st_barIndex == 99
     }
 }
