@@ -1,423 +1,332 @@
-//% color=#00bcd4 icon="\uf1b9" block="MSMdadabit"
-//% groups='["Initialisation","Capteurs ligne","Suivi de ligne","Camera","Bras et pince","Destination","Macros PRO"]'
-namespace msmdadabit {
+/**
+ * MSM AI Handler - Extension MakeCode (micro:bit)
+ * DaDa:bit + WonderCam
+ *
+ * Extension "propre" :
+ *  - uniquement des fonctions exportées (blocs)
+ *  - aucun basic.forever()
+ */
 
-    // =========================================================
-    // ETAT : LIGNE (4 capteurs)
-    // =========================================================
-    let capteur1 = false
-    let capteur2 = false
-    let capteur3 = false
-    let capteur4 = false
+//% color=#00BCD4 icon="\uf085" block="MSM AI Handler"
+//% groups='["Init","Capteurs","Suivi de ligne","Vision (WonderCam)","Bras","Mission"]'
+namespace msmAIHandler {
+    // -----------------------------
+    // Variables internes (capteurs)
+    // -----------------------------
+    let S1 = false
+    let S2 = false
+    let S3 = false
+    let S4 = false
 
-    // =========================================================
-    // ETAT : VITESSES (valeurs qui marchent)
-    // =========================================================
-    let v_tout_droit = 55
-    let v_correction = 44
-    let v_petit = 33
+    // Etat mission simple : 0 = reconnaissance / 1 = livraison (placement)
+    let phase = 0
+    let nextCount = 0
 
-    // =========================================================
-    // ETAT : CAMERA (couleur ID)
-    // =========================================================
-    let id_couleur = 1
-    let x_min = 80
-    let x_max = 240
-    let y_approche = 237
-    let nb_validations = 8
-    let compteur_stabilite = 0
+    // -----------------------------
+    // Constantes (réglables)
+    // -----------------------------
+    const X_MIN = 80
+    const X_MAX = 240
+    const Y_CLOSE = 237
 
-    // =========================================================
-    // ETAT : BRAS / PINCE
-    // =========================================================
-    let servo_bras = 5
-    let servo_pince = 6
-    let bras_haut = -60
-    let bras_bas = -5
-    let pince_ouverte = 15
-    let pince_fermee = -25
+    // Vitesses (0..100)
+    const SPEED_STRAIGHT = 55
+    const SPEED_ADJUST = 44
+    const SPEED_SOFT = 33
 
-    let porte_objet = false
+    // Servos du bras (comme dans ton code)
+    const SERVO_ARM = 5   // 270°
+    const SERVO_GRIP = 6  // 270° (ou selon montage)
 
-    // =========================================================
-    // OUTILS MOTEURS (internes) - mêmes sens que ton code
-    // =========================================================
-    function moteurs_stop(): void {
+    // -----------------------------
+    // INIT
+    // -----------------------------
+
+    /**
+     * Initialise DaDa:bit + WonderCam et met la WonderCam en détection couleur.
+     */
+    //% blockId=msm_aihandler_init
+    //% block="initialiser AI Handler (DaDa:bit + WonderCam)"
+    //% group="Init"
+    export function init(): void {
+        dadabit.dadabit_init()
+        wondercam.wondercam_init(wondercam.DEV_ADDR.x32)
+        wondercam.ChangeFunc(wondercam.Functions.ColorDetect)
+
+        phase = 0
+        nextCount = 0
+
+        // Position initiale du bras (comme ton programme)
+        dadabit.setLego270Servo(SERVO_ARM, -60, 300)
+        dadabit.setLego270Servo(SERVO_GRIP, 15, 300)
+        basic.pause(500)
+    }
+
+    // -----------------------------
+    // CAPTEURS
+    // -----------------------------
+
+    /**
+     * Met à jour les capteurs de ligne (S1..S4) pour une ligne noire sur fond clair.
+     */
+    //% blockId=msm_aihandler_update_line
+    //% block="mettre à jour capteurs de ligne (noir)"
+    //% group="Capteurs"
+    export function updateLineSensors(): void {
+        S1 = dadabit.line_followers(dadabit.LineFollowerSensors.S1, dadabit.LineColor.Black)
+        S2 = dadabit.line_followers(dadabit.LineFollowerSensors.S2, dadabit.LineColor.Black)
+        S3 = dadabit.line_followers(dadabit.LineFollowerSensors.S3, dadabit.LineColor.Black)
+        S4 = dadabit.line_followers(dadabit.LineFollowerSensors.S4, dadabit.LineColor.Black)
+    }
+
+    /**
+     * Lit S1..S4 (utile pour debug).
+     */
+    //% blockId=msm_aihandler_get_sensor
+    //% block="capteur %sensor sur noir ?"
+    //% sensor.defl=dadabit.LineFollowerSensors.S2
+    //% group="Capteurs"
+    export function isOnBlack(sensor: dadabit.LineFollowerSensors): boolean {
+        if (sensor == dadabit.LineFollowerSensors.S1) return S1
+        if (sensor == dadabit.LineFollowerSensors.S2) return S2
+        if (sensor == dadabit.LineFollowerSensors.S3) return S3
+        return S4
+    }
+
+    /**
+     * Vrai si les 4 capteurs voient la ligne (zone destination / croisement).
+     */
+    //% blockId=msm_aihandler_at_destination
+    //% block="destination atteinte ? (S1,S2,S3,S4 sur noir)"
+    //% group="Capteurs"
+    export function atDestination(): boolean {
+        return S1 && S2 && S3 && S4
+    }
+
+    // -----------------------------
+    // SUIVI DE LIGNE
+    // -----------------------------
+
+    /**
+     * Arrêt des 4 servos 360°.
+     */
+    //% blockId=msm_aihandler_stop
+    //% block="stopper le robot"
+    //% group="Suivi de ligne"
+    export function stop(): void {
         dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, 0)
         dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, 0)
         dadabit.setLego360Servo(3, dadabit.Oriention.Clockwise, 0)
         dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, 0)
     }
 
-    function moteurs_avancer(v: number): void {
-        // AVANCER (comme ton code)
-        dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, v)
-    }
-
-    // tourner gauche/droite selon ton algo “fiable”
-    function tourner_gauche_fort(v: number): void {
-        // tous clockwise (comme ton code quand ligne à gauche)
-        dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, v)
-    }
-
-    function tourner_droite_fort(v: number): void {
-        // tous counterclockwise (comme ton code quand ligne à droite)
-        dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, v)
-    }
-
-    function correction_sens_gauche(): void {
-        // Sensor2 seul => corriger à gauche (v_correction vs v_petit)
-        dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v_correction)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, v_petit)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, v_correction)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, v_petit)
-    }
-
-    function correction_sens_droite(): void {
-        // Sensor3 seul => corriger à droite (v_petit vs v_correction)
-        dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v_petit)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, v_correction)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, v_petit)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, v_correction)
-    }
-
-    // rotation sur place (droite / gauche) utile pour rechercher/recentrer
-    function rotation_droite(v: number): void {
-        dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, v)
-    }
-
-    function rotation_gauche(v: number): void {
-        dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, v)
-    }
-
-    // =========================================================
-    // INITIALISATION
-    // =========================================================
-    //% group="Initialisation"
-    //% blockId=msm_init
-    //% block="initialiser MSMdadabit (ID %id bras %bras pince %pince)"
-    //% id.defl=1 bras.defl=5 pince.defl=6
-    export function initialiser(id: number = 1, bras: number = 5, pince: number = 6): void {
-        dadabit.dadabit_init()
-
-        id_couleur = id
-        servo_bras = bras
-        servo_pince = pince
-
-        // Camera : on initialise ici (extension autonome)
-        wondercam.wondercam_init(wondercam.DEV_ADDR.x32)
-        wondercam.ChangeFunc(wondercam.Functions.ColorDetect)
-
-        // position départ bras/pince
-        dadabit.setLego270Servo(servo_bras, bras_haut, 300)
-        dadabit.setLego270Servo(servo_pince, pince_ouverte, 300)
-
-        porte_objet = false
-        compteur_stabilite = 0
-
-        basic.pause(400)
-    }
-
-    //% group="Initialisation"
-    //% blockId=msm_regler_vitesses
-    //% block="regler vitesses (tout droit %vd correction %vc petit %vp)"
-    //% vd.defl=55 vc.defl=44 vp.defl=33
-    export function reglerVitesses(vd: number = 55, vc: number = 44, vp: number = 33): void {
-        v_tout_droit = vd
-        v_correction = vc
-        v_petit = vp
-    }
-
-    //% group="Initialisation"
-    //% blockId=msm_regler_camera
-    //% block="regler camera (X %xmin-%xmax Y %y validations %n)"
-    //% xmin.defl=80 xmax.defl=240 y.defl=237 n.defl=8
-    export function reglerCamera(xmin: number = 80, xmax: number = 240, y: number = 237, n: number = 8): void {
-        x_min = xmin
-        x_max = xmax
-        y_approche = y
-        nb_validations = n
-        compteur_stabilite = 0
-    }
-
-    // =========================================================
-    // CAPTEURS LIGNE
-    // =========================================================
-    //% group="Capteurs ligne"
-    //% blockId=msm_maj_ligne
-    //% block="mettre a jour ligne"
-    export function mettreAJourLigne(): void {
-        capteur1 = dadabit.line_followers(dadabit.LineFollowerSensors.S1, dadabit.LineColor.Black)
-        capteur2 = dadabit.line_followers(dadabit.LineFollowerSensors.S2, dadabit.LineColor.Black)
-        capteur3 = dadabit.line_followers(dadabit.LineFollowerSensors.S3, dadabit.LineColor.Black)
-        capteur4 = dadabit.line_followers(dadabit.LineFollowerSensors.S4, dadabit.LineColor.Black)
-    }
-
-    //% group="Destination"
-    //% blockId=msm_destination
-    //% block="arrive a destination"
-    export function arriveDestination(): boolean {
-        return (capteur1 && capteur2 && capteur3 && capteur4)
-    }
-
-    // =========================================================
-    // SUIVI DE LIGNE (ALGO FIABLE = ton code)
-    // =========================================================
+    /**
+     * Suivi de ligne “général” (mêmes règles que ton code).
+     */
+    //% blockId=msm_aihandler_line_follow
+    //% block="suivre la ligne (général)"
     //% group="Suivi de ligne"
-    //% blockId=msm_suivre_ligne
-    //% block="suivre la ligne (fiable)"
-    export function suivreLigne(): void {
-        // suppose: mettreAJourLigne() a été appelé
-        if (capteur2 && capteur3) {
-            moteurs_avancer(v_tout_droit)
+    export function lineFollowGeneral(): void {
+        // Tout droit
+        if (S2 && S3) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, SPEED_STRAIGHT)
 
-        } else if (capteur1 && capteur2 && (!capteur3 && !capteur4)) {
-            tourner_gauche_fort(v_correction)
+        // Ajuster à gauche
+        } else if (S1 && S2 && (!S3 && !S4)) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Clockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, SPEED_ADJUST)
 
-        } else if (capteur3 && capteur4 && (!capteur1 && !capteur2)) {
-            tourner_droite_fort(v_correction)
+        // Ajuster à droite
+        } else if (S3 && S4 && (!S1 && !S2)) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Counterclockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, SPEED_ADJUST)
 
-        } else if (capteur2 && !capteur1 && !capteur3 && !capteur4) {
-            correction_sens_gauche()
+        // Dérive légère (S2 seul)
+        } else if (S2 && (!S1 && !S3 && !S4)) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, SPEED_SOFT)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, SPEED_SOFT)
 
-        } else if (capteur3 && !capteur1 && !capteur2 && !capteur4) {
-            correction_sens_droite()
+        // Dérive légère (S3 seul)
+        } else if (S3 && (!S1 && !S2 && !S4)) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, SPEED_SOFT)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, SPEED_ADJUST)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, SPEED_SOFT)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, SPEED_ADJUST)
 
-        } else if (capteur1 && !capteur2 && !capteur3 && !capteur4) {
-            tourner_gauche_fort(v_tout_droit)
+        // Extrême gauche (S1 seul)
+        } else if (S1 && (!S2 && !S3 && !S4)) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Clockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Clockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Clockwise, SPEED_STRAIGHT)
 
-        } else if (capteur4 && !capteur1 && !capteur2 && !capteur3) {
-            tourner_droite_fort(v_tout_droit)
+        // Extrême droite (S4 seul)
+        } else if (S4 && (!S1 && !S2 && !S3)) {
+            dadabit.setLego360Servo(1, dadabit.Oriention.Counterclockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(2, dadabit.Oriention.Counterclockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(3, dadabit.Oriention.Counterclockwise, SPEED_STRAIGHT)
+            dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, SPEED_STRAIGHT)
         }
     }
 
-    // =========================================================
-    // CAMERA
-    // =========================================================
-    //% group="Camera"
-    //% blockId=msm_maj_camera
-    //% block="mettre a jour camera"
-    export function mettreAJourCamera(): void {
+    // -----------------------------
+    // VISION (WONDERCAM)
+    // -----------------------------
+
+    /**
+     * Met à jour les résultats WonderCam (à appeler dans la boucle).
+     */
+    //% blockId=msm_aihandler_update_cam
+    //% block="mettre à jour WonderCam"
+    //% group="Vision (WonderCam)"
+    export function updateCamera(): void {
         wondercam.UpdateResult()
     }
 
-    //% group="Camera"
-    //% blockId=msm_cube_detecte
-    //% block="cube detecte"
-    export function cubeDetecte(): boolean {
-        return wondercam.isDetectedColorId(id_couleur)
+    /**
+     * Vrai si couleur ID détectée et centrée en X.
+     */
+    //% blockId=msm_aihandler_color_centered
+    //% block="couleur ID %id détectée et centrée ?"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Vision (WonderCam)"
+    export function isColorCentered(id: number): boolean {
+        if (!wondercam.isDetectedColorId(id)) return false
+        const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
+        return x >= X_MIN && x <= X_MAX
     }
 
-    //% group="Camera"
-    //% blockId=msm_cube_centre_x
-    //% block="cube centre en X"
-    export function cubeCentreEnX(): boolean {
-        if (!cubeDetecte()) return false
-        const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id_couleur)
-        return (x >= x_min && x <= x_max)
+    /**
+     * Renvoie Y de la couleur ID (0..?) si détectée, sinon -1.
+     */
+    //% blockId=msm_aihandler_color_y
+    //% block="Y de couleur ID %id"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Vision (WonderCam)"
+    export function colorY(id: number): number {
+        if (!wondercam.isDetectedColorId(id)) return -1
+        return wondercam.XOfColorId(wondercam.Options.Pos_Y, id)
     }
 
-    //% group="Camera"
-    //% blockId=msm_cube_stable
-    //% block="cube stable"
-    export function cubeStable(): boolean {
-        if (cubeCentreEnX()) compteur_stabilite++
-        else compteur_stabilite = 0
-        return compteur_stabilite >= nb_validations
-    }
+    // -----------------------------
+    // BRAS (GRAB / DROP)
+    // -----------------------------
 
-    // =========================================================
-    // BRAS / PINCE
-    // =========================================================
-    //% group="Bras et pince"
-    //% blockId=msm_attraper
-    //% block="attraper l objet"
-    export function attraperObjet(): void {
-        moteurs_stop()
-        basic.pause(300)
-
-        dadabit.setLego270Servo(servo_bras, bras_bas, 500)
-        basic.pause(800)
-
-        dadabit.setLego270Servo(servo_pince, pince_fermee, 500)
-        basic.pause(800)
-
-        dadabit.setLego270Servo(servo_bras, bras_haut, 500)
-        basic.pause(800)
-
-        porte_objet = true
-    }
-
-    //% group="Bras et pince"
-    //% blockId=msm_deposer
-    //% block="deposer l objet"
-    export function deposerObjet(): void {
-        moteurs_stop()
-        basic.pause(300)
-
-        dadabit.setLego270Servo(servo_bras, bras_bas, 500)
-        basic.pause(800)
-
-        dadabit.setLego270Servo(servo_pince, pince_ouverte, 500)
-        basic.pause(800)
-
-        dadabit.setLego270Servo(servo_bras, bras_haut, 500)
-        basic.pause(800)
-
-        porte_objet = false
-    }
-
-    //% group="Bras et pince"
-    //% blockId=msm_porte_objet
-    //% block="porte un objet"
-    export function porteUnObjet(): boolean {
-        return porte_objet
-    }
-
-    // =========================================================
-    // DESTINATION (style code officiel)
-    // - déposer si on porte un objet
-    // - puis reculer / tourner jusqu'à reprendre la ligne
-    // =========================================================
-    //% group="Destination"
-    //% blockId=msm_gerer_destination
-    //% block="gerer destination (vitesse %v)"
-    //% v.defl=44
-    export function gererDestination(v: number = 44): void {
-        if (!arriveDestination()) return
-
-        moteurs_stop()
+    /**
+     * Attraper l’objet (séquence bras).
+     */
+    //% blockId=msm_aihandler_grab
+    //% block="attraper l'objet"
+    //% group="Bras"
+    export function grab(): void {
+        stop()
         basic.pause(500)
 
-        // déposer si on porte
-        if (porte_objet) {
-            deposerObjet()
-            compteur_stabilite = 0
-        }
+        dadabit.setLego270Servo(SERVO_ARM, -5, 500)
+        basic.pause(800)
 
-        // séquence type "destination" : reculer puis tourner jusqu'à retrouver ligne (S3&S4)
-        // reculer un peu
-        dadabit.setLego360Servo(1, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(2, dadabit.Oriention.Counterclockwise, v)
-        dadabit.setLego360Servo(3, dadabit.Oriention.Clockwise, v)
-        dadabit.setLego360Servo(4, dadabit.Oriention.Counterclockwise, v)
+        dadabit.setLego270Servo(SERVO_GRIP, -25, 500)
+        basic.pause(800)
+
+        dadabit.setLego270Servo(SERVO_ARM, -60, 500)
+        basic.pause(800)
+
+        phase = 1 // on passe en “livraison”
+    }
+
+    /**
+     * Déposer l’objet (séquence bras).
+     */
+    //% blockId=msm_aihandler_drop
+    //% block="déposer l'objet"
+    //% group="Bras"
+    export function drop(): void {
+        stop()
         basic.pause(500)
 
-        // tourner (sur place) jusqu'à ce que la ligne soit sous les capteurs 3 et 4
-        mettreAJourLigne()
-        while (capteur1 || capteur2 || !(capteur3 && capteur4)) {
-            tourner_droite_fort(v)   // comme ton code de référence (tous CCW dans la boucle)
-            mettreAJourLigne()
-        }
+        dadabit.setLego270Servo(SERVO_ARM, -5, 500)
+        basic.pause(800)
 
-        moteurs_stop()
-        basic.pause(100)
+        dadabit.setLego270Servo(SERVO_GRIP, 15, 500)
+        basic.pause(800)
+
+        dadabit.setLego270Servo(SERVO_ARM, -60, 500)
+        basic.pause(800)
+
+        phase = 0 // retour reconnaissance
     }
 
-    // =========================================================
-    // MACROS PRO (compétition)
-    // =========================================================
-    //% group="Macros PRO"
-    //% blockId=msm_bip
-    //% block="bip validation"
-    export function bipValidation(): void {
-        music.play(music.tonePlayable(262, music.beat(BeatFraction.Whole)), music.PlaybackMode.UntilDone)
+    /**
+     * Lire la phase : 0 reconnaissance / 1 livraison.
+     */
+    //% blockId=msm_aihandler_get_phase
+    //% block="phase mission (0=reconnaissance,1=livraison)"
+    //% group="Mission"
+    export function getPhase(): number {
+        return phase
     }
 
-    //% group="Macros PRO"
-    //% blockId=msm_recentrer_cube
-    //% block="recentrer cube (vitesse %v timeout(ms) %t)"
-    //% v.defl=25 t.defl=2500
-    export function recentrerCube(v: number = 25, t: number = 2500): boolean {
-        const t0 = input.runningTime()
-        while (input.runningTime() - t0 < t) {
-            mettreAJourCamera()
-            if (!cubeDetecte()) { moteurs_stop(); return false }
+    /**
+     * Forcer la phase mission.
+     */
+    //% blockId=msm_aihandler_set_phase
+    //% block="définir phase mission à %p"
+    //% p.min=0 p.max=1 p.defl=0
+    //% group="Mission"
+    export function setPhase(p: number): void {
+        phase = (p == 1) ? 1 : 0
+        nextCount = 0
+    }
 
-            const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id_couleur)
-            if (x < x_min) rotation_gauche(v)
-            else if (x > x_max) rotation_droite(v)
-            else { moteurs_stop(); return true }
+    // -----------------------------
+    // MISSION (logique “helper”)
+    // -----------------------------
 
-            basic.pause(40)
+    /**
+     * Approche l’objet couleur ID en suivant la ligne jusqu’à être proche, puis attrape.
+     * - utilise un compteur (8 fois) pour éviter les fausses détections
+     * Retourne true si un grab a été effectué.
+     */
+    //% blockId=msm_aihandler_approach_and_grab
+    //% block="si couleur ID %id détectée (stable) alors approcher & attraper"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Mission"
+    export function approachAndGrabIfColor(id: number): boolean {
+        if (phase != 0) return false
+
+        // condition : détectée + centrée
+        if (wondercam.isDetectedColorId(id)) {
+            const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
+            if (x >= X_MIN && x <= X_MAX) {
+                nextCount += 1
+
+                // stable 8 fois
+                if (nextCount > 8) {
+                    nextCount = 0
+                    music.play(music.tonePlayable(262, music.beat(BeatFraction.Whole)), music.PlaybackMode.UntilDone)
+
+                    // avancer jusqu’à proximité (Y >= seuil) ou disparition
+                    while (wondercam.isDetectedColorId(id) && wondercam.XOfColorId(wondercam.Options.Pos_Y, id) < Y_CLOSE) {
+                        updateCamera()
+                        updateLineSensors()
+                        lineFollowGeneral()
+                    }
+
+                    grab()
+                    return true
+                }
+            }
         }
-        moteurs_stop()
+
         return false
-    }
-
-    //% group="Macros PRO"
-    //% blockId=msm_approcher_cube
-    //% block="approcher cube (timeout(ms) %t)"
-    //% t.defl=5000
-    export function approcherCube(t: number = 5000): boolean {
-        const t0 = input.runningTime()
-        while (input.runningTime() - t0 < t) {
-            mettreAJourCamera()
-            if (!cubeDetecte()) { moteurs_stop(); return false }
-
-            const y = wondercam.XOfColorId(wondercam.Options.Pos_Y, id_couleur)
-            if (y < y_approche) {
-                mettreAJourLigne()
-                suivreLigne()
-            } else {
-                moteurs_stop()
-                return true
-            }
-            basic.pause(10)
-        }
-        moteurs_stop()
-        return false
-    }
-
-    //% group="Macros PRO"
-    //% blockId=msm_cycle_pro
-    //% block="cycle PRO (vitesse destination %v)"
-    //% v.defl=44
-    export function cyclePro(v: number = 44): void {
-        // 1) mises à jour
-        mettreAJourCamera()
-        mettreAJourLigne()
-
-        // 2) destination (si atteint)
-        gererDestination(v)
-
-        // 3) suivi de ligne en continu
-        suivreLigne()
-
-        // 4) si on ne porte rien et cube stable => bip + recentrer + approcher + attraper
-        if (!porte_objet && cubeStable()) {
-            bipValidation()
-
-            // centrage fin (si échec, on retourne au suivi de ligne)
-            if (!recentrerCube(25, 2500)) {
-                compteur_stabilite = 0
-                return
-            }
-
-            // approche (si cube perdu, retour)
-            if (!approcherCube(5000)) {
-                compteur_stabilite = 0
-                return
-            }
-
-            // attraper
-            attraperObjet()
-            compteur_stabilite = 0
-        }
     }
 }
