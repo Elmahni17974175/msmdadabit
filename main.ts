@@ -1,20 +1,3 @@
-/**
- * msmdadabit - Extension MakeCode (micro:bit)
- * DaDa:bit + WonderCam (via dadabit)
- *
- * Version pédagogique :
- * - "approcher & attraper couleur ID" est une ACTION (pas une condition)
- * - Blocs génériques : AprilTag + Chiffres (pas limités à 1/2)
- * - Smart Transport : config / reset / step / done (encore plus blocs)
- *
- * ✅ AJOUTS (décomposition pédagogique) :
- * - couleur détectée ? / X / Y
- * - couleur détectée de façon stable ?
- * - s'approcher du cube (couleur) (action)
- * - (optionnel) attraper (déjà existant) + déposer (déjà existant)
- * NB: On garde le bloc Mission : approachAndGrabIfColor(id)
- */
-
 //% color=#00BCD4 icon="\uf085" block="msmdadabit"
 //% groups='["Init","Réglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Mission","Smart Transport"]'
 namespace msmdadabit {
