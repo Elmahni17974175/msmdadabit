@@ -6,6 +6,13 @@
  * - "approcher & attraper couleur ID" est une ACTION (pas une condition)
  * - Blocs génériques : AprilTag + Chiffres (pas limités à 1/2)
  * - Smart Transport : config / reset / step / done (encore plus blocs)
+ *
+ * ✅ AJOUTS (décomposition pédagogique) :
+ * - couleur détectée ? / X / Y
+ * - couleur détectée de façon stable ?
+ * - s'approcher du cube (couleur) (action)
+ * - (optionnel) attraper (déjà existant) + déposer (déjà existant)
+ * NB: On garde le bloc Mission : approachAndGrabIfColor(id)
  */
 
 //% color=#00BCD4 icon="\uf085" block="msmdadabit"
@@ -55,6 +62,13 @@ namespace msmdadabit {
 
     // Etat manipulation
     let porteObjet = false
+
+    // =========================================================
+    // ✅ ETAT "STABILITÉ" (décomposition pédagogique)
+    // - séparé de nextCount (mission), pour ne pas perturber approachAndGrabIfColor()
+    // =========================================================
+    let stableCount = 0
+    let stableLastId = -1
 
     // =========================================================
     // OUTILS MOTEURS (internes)
@@ -128,6 +142,9 @@ namespace msmdadabit {
         nextCount = 0
         porteObjet = false
         lastGrab = false
+
+        stableCount = 0
+        stableLastId = -1
 
         armHome()
         stopInterne()
@@ -416,6 +433,119 @@ namespace msmdadabit {
         basic.pause(120)
     }
 
+    // ---------------------------------------------------------
+    // ✅ BLOCS "décomposition" : détectée ? / X / Y / stable ?
+    // ---------------------------------------------------------
+
+    /**
+     * Couleur ID détectée actuellement ?
+     */
+    //% blockId=msm_color_detected
+    //% block="couleur ID %id détectée ?"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Vision (WonderCam)"
+    export function isColorDetected(id: number): boolean {
+        return wondercam.isDetectedColorId(id)
+    }
+
+    /**
+     * X de la couleur ID (position horizontale).
+     * Retourne 0 si non détectée.
+     */
+    //% blockId=msm_color_x
+    //% block="X de couleur ID %id"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Vision (WonderCam)"
+    export function colorX(id: number): number {
+        if (!wondercam.isDetectedColorId(id)) return 0
+        return wondercam.XOfColorId(wondercam.Options.Pos_X, id)
+    }
+
+    /**
+     * Y de la couleur ID (position verticale).
+     * Retourne 0 si non détectée.
+     */
+    //% blockId=msm_color_y
+    //% block="Y de couleur ID %id"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Vision (WonderCam)"
+    export function colorY(id: number): number {
+        if (!wondercam.isDetectedColorId(id)) return 0
+        return wondercam.XOfColorId(wondercam.Options.Pos_Y, id)
+    }
+
+    /**
+     * Réinitialiser la stabilité (utile en pédagogie ou si on change d'ID).
+     */
+    //% blockId=msm_color_stable_reset
+    //% block="réinitialiser stabilité couleur"
+    //% group="Vision (WonderCam)"
+    export function resetColorStability(): void {
+        stableCount = 0
+        stableLastId = -1
+    }
+
+    /**
+     * Couleur ID détectée de façon stable ?
+     * - Vérifie : détectée + X dans [X_MIN..X_MAX]
+     * - Compte VALIDATIONS fois consécutives
+     *
+     * ⚠️ Ne change PAS la mission : approachAndGrabIfColor() garde son propre compteur (nextCount).
+     */
+    //% blockId=msm_color_stable
+    //% block="couleur ID %id détectée de façon stable ?"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Vision (WonderCam)"
+    export function isColorDetectedStable(id: number): boolean {
+        // si ID change → reset compteur
+        if (stableLastId != id) {
+            stableLastId = id
+            stableCount = 0
+        }
+
+        // pas détectée → reset
+        if (!wondercam.isDetectedColorId(id)) {
+            stableCount = 0
+            return false
+        }
+
+        // X doit être dans la zone utile
+        const x = wondercam.XOfColorId(wondercam.Options.Pos_X, id)
+        if (x < X_MIN || x > X_MAX) {
+            stableCount = 0
+            return false
+        }
+
+        stableCount += 1
+        return stableCount >= VALIDATIONS
+    }
+
+    // =========================================================
+    // ✅ MISSION (décomposition) : approche seule (action)
+    // =========================================================
+    /**
+     * ACTION : s'approcher du cube couleur ID jusqu'à être proche.
+     * - Tant que la couleur est visible ET Y < Y_CLOSE, on suit la ligne.
+     * - S’arrête si la couleur disparaît (sécurité).
+     *
+     * À utiliser après un test "couleur détectée stable ?".
+     */
+    //% blockId=msm_approach_color_only
+    //% block="s'approcher du cube couleur ID %id"
+    //% id.min=1 id.max=7 id.defl=1
+    //% group="Mission"
+    export function approachColor(id: number): void {
+        // boucle approche : visible + pas encore proche
+        while (wondercam.isDetectedColorId(id) &&
+            wondercam.XOfColorId(wondercam.Options.Pos_Y, id) < Y_CLOSE) {
+            updateCamera()
+            updateLineSensors()
+            lineFollowGeneral()
+        }
+        // On ne fait PAS grab() ici : bloc séparé "attraper l'objet"
+        stopInterne()
+    }
+
     /**
      * ✅ Nouveau nom générique AprilTag
      * Retour : tagA, tagB, ou -1.
@@ -581,6 +711,7 @@ namespace msmdadabit {
 
     /**
      * ✅ ACTION : approcher & attraper une couleur ID (AI Handler)
+     * (on la garde en Mission comme demandé)
      */
     //% blockId=msm_approach_grab_color
     //% block="approcher & attraper couleur ID %id"
