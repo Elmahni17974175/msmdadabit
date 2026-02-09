@@ -336,7 +336,7 @@ namespace msmdadabit {
     // SUIVI DE LIGNE (mode compétition)
     // =========================================================
     //% blockId=msm_line_follow_compet
-    //% block="suivre la ligne (mode compétition)"
+    //% block="suivre la ligne "
     //% group="Suivi de ligne"
     export function lineFollowGeneral(): void {
         if (S2 && S3) {
