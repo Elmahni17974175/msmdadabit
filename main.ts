@@ -3,7 +3,7 @@
 //% groups='["Init","Réglages","Capteurs","Mouvements","Suivi de ligne","Vision (WonderCam)","Bras","Mission","Smart Transport"]'
 namespace msmdadabit {
     // =========================================================
-    // CAPTEURS LIGNE (internes)
+    // CAPTEURS LIGNE (internes) 
     // =========================================================
     let S1 = false
     let S2 = false
